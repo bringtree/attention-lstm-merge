@@ -1,1 +1,3 @@
-# attention-lstm-merge
+# 开始整理论文用到的代码。 主要是几篇常用于lstm的attention计算的代码。
+# 代码太多太杂。  有空陆续释放。 
+# 有5种
