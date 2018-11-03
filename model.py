@@ -10,7 +10,8 @@ class NlpModel:
     改造的 lstm 模型
     """
 
-    def __init__(self, sentence_fixed_len, learning_rate, word_vec_size, hidden_num, label_num):
+    def __init__(self, sentence_fixed_len, learning_rate, word_vec_size, hidden_num,
+                 label_num):
         """
 
         :param sentence_fixed_len: 句子长度
@@ -64,12 +65,31 @@ class NlpModel:
                 dtype=tf.float32,
                 time_major=False)
             encoder_outputs = tf.concat(encoder_outputs, 2)
+            state_fw = encoder_final_state[0]
+            state_bw = encoder_final_state[1]
+            encoder_state = tf.concat([tf.concat(state_fw, 1),
+                                       tf.concat(state_bw, 1)], 1)
+
+            attention_w = tf.get_variable(shape=[self.hidden_num * 4, self.hidden_num * 2],
+                                          initializer=tf.initializers.random_normal(mean=0, stddev=1),
+                                          name='attention_w')
+
+            attention_u = tf.get_variable(shape=[self.hidden_num * 2, self.hidden_num * 2],
+                                          initializer=tf.initializers.random_normal(mean=0, stddev=1),
+                                          name='attention_u')
 
             attention_v = tf.get_variable(shape=[self.hidden_num * 2],
                                           initializer=tf.initializers.random_normal(mean=0, stddev=1),
                                           name='attention_v')
 
-            auto_attention_rate = tf.tanh(tf.tensordot(tf.tanh(encoder_outputs), attention_v, axes=1))
+            encoder_state = tf.reshape(tf.tile(encoder_state, (1, self.sentence_fixed_len)),
+                                       [-1, self.sentence_fixed_len, self.hidden_num * 4])
+
+            auto_attention_rate = tf.tensordot(
+                tf.tanh(
+                    tf.tensordot(encoder_outputs, attention_u, 1) + tf.tensordot(encoder_state, attention_w, 1)),
+                attention_v,
+                axes=1)
             self.attention_rate_length = tf.sequence_mask(self.__sentences_ready_length, self.sentence_fixed_len)
             N_TF_INF = tf.constant([-np.array(1e10)]) + auto_attention_rate
             auto_attention_rate = tf.where(self.attention_rate_length, auto_attention_rate, N_TF_INF)
@@ -82,7 +102,7 @@ class NlpModel:
             # auto_attention_rate_weight = tf.to_float(tf.equal(tf.reduce_sum(self.__manual_attention_rate, 1), 0))
             # auto_attention_rate_weight = tf.expand_dims(auto_attention_rate_weight, 1)
             # auto_attention_rate_weight = tf.tile(auto_attention_rate_weight, multiples=[1, self.sentence_fixed_len])
-
+            #
             # auto_attention_rate = tf.multiply(self.__auto_attention_rate, auto_attention_rate_weight)
             # manual_attention_rate = tf.multiply(self.__manual_attention_rate, 1 - auto_attention_rate_weight)
             # self.__attention_rate = auto_attention_rate + manual_attention_rate
@@ -91,7 +111,7 @@ class NlpModel:
             add_atten_input = tf.map_fn(lambda x: x[0] * x[1], (encoder_outputs, attention_rate),
                                         dtype=tf.float32)
 
-            intent_output = tf.tanh(tf.reduce_sum(add_atten_input, 1))
+            intent_output = tf.reduce_sum(add_atten_input, 1)
 
             intent_matrix = tf.get_variable(
                 name='intent_matrix',
@@ -224,13 +244,14 @@ class NlpModel:
 if __name__ == '__main__':
     for _ in range(1):
         lstm_model = NlpModel(sentence_fixed_len=16, learning_rate=0.001, word_vec_size=1, hidden_num=20,
-                              label_num=4)
+                              full_hidden_num=0,
+                              attention_cell_num=0, label_num=4)
         sess = tf.Session(config=tf.ConfigProto(gpu_options=tf.GPUOptions(allow_growth=True)))
 
         lstm_model.build(sess)
         sess.run(tf.global_variables_initializer())
 
-        for _ in range(1000):
+        for _ in range(100):
             tmp = lstm_model.train(
                 input_sentences=[[[0.1] for _ in range(1)] + [[1] for _ in range(15)],
                                  [[1] for _ in range(15)] + [[0.2] for _ in range(1)],

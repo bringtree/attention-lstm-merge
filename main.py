@@ -32,7 +32,7 @@ def sub_process(train_args):
                        output_keep_prob=train_args['output_keep_prob'])
 
 
-pool = multiprocessing.Pool(processes=3)
+pool = multiprocessing.Pool(processes=1)
 
 learning_rate_list = [0.001]
 hidden_num_list = [50, 100, 150]
